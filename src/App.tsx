@@ -14,6 +14,7 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [parameters, setParameters] = useState({ ...defaultParams });
   const [debounceTimeout, setDebounceTimeout] = useState<number | null>(null);
+  const [manualWhitelistMask, setManualWhitelistMask] = useState<boolean[] | undefined>(undefined);
 
   const handleImageSelected = (file: File) => {
     const reader = new FileReader();
@@ -57,7 +58,14 @@ function App() {
         // Add a small delay to ensure the UI can update with "Processing..." indicator
         await new Promise(resolve => setTimeout(resolve, 10));
         console.log("Starting image processing with parameters:", parameters);
-        const result = await processImage(originalImageData, parameters);
+        
+        // Include the manual whitelist mask in the parameters if it exists
+        const paramsWithWhitelist = {
+          ...parameters,
+          manualWhitelistMask: manualWhitelistMask
+        };
+        
+        const result = await processImage(originalImageData, paramsWithWhitelist);
         setProcessedImage(result.processedImage);
         setVisualizationImage(result.visualizationImage);
         setProcessingStats(result.stats);
@@ -68,7 +76,7 @@ function App() {
         setIsProcessing(false);
       }
     }
-  }, [originalImageData, parameters]);
+  }, [originalImageData, parameters, manualWhitelistMask]);
 
   useEffect(() => {
     if (originalImageData) {
@@ -121,6 +129,12 @@ function App() {
     }
   };
 
+  const handleManualWhitelist = (mask: boolean[]) => {
+    setManualWhitelistMask(mask);
+    // No need to call processImageWithParams here as the useEffect with its dependencies
+    // will trigger the processing
+  };
+
   return (
     <div className="app">
       <header className="app-header">
@@ -154,6 +168,7 @@ function App() {
                   setProcessedImage(null);
                   setVisualizationImage(null);
                   setProcessingStats(null);
+                  setManualWhitelistMask(undefined);
                 }}
                 disabled={isProcessing}
               >
@@ -188,6 +203,10 @@ function App() {
                         <td>{processingStats.nearBlackPixels}</td>
                       </tr>
                       <tr>
+                        <td>Manually whitelisted:</td>
+                        <td>{processingStats.manuallyWhitelistedPixels}</td>
+                      </tr>
+                      <tr>
                         <td>Replaced pixels:</td>
                         <td>{processingStats.replacedPixels}</td>
                       </tr>
@@ -207,6 +226,7 @@ function App() {
                 processedImage={processedImage}
                 visualizationImage={visualizationImage}
                 isProcessing={isProcessing}
+                onManualWhitelist={handleManualWhitelist}
               />
             </div>
           </div>

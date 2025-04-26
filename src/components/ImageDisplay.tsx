@@ -1,17 +1,20 @@
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, MouseEvent } from 'react';
+import { createCircularWhitelistMask } from '../utils/imageProcessing';
 
 interface ImageDisplayProps {
   originalImage: string | null;
   processedImage: ImageData | null;
   visualizationImage?: ImageData | null;
   isProcessing?: boolean;
+  onManualWhitelist?: (mask: boolean[]) => void;
 }
 
 export default function ImageDisplay({ 
   originalImage, 
   processedImage,
   visualizationImage,
-  isProcessing = false
+  isProcessing = false,
+  onManualWhitelist
 }: ImageDisplayProps) {
   const originalCanvasRef = useRef<HTMLCanvasElement>(null);
   const processedCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -47,6 +50,19 @@ export default function ImageDisplay({
   
   // Track original image dimensions once loaded
   const [imageDimensions, setImageDimensions] = useState({ width: 0, height: 0 });
+
+  // Whitelist brush state
+  const [isWhitelistBrushActive, setIsWhitelistBrushActive] = useState(false);
+  const [whitelistBrushSize, setWhitelistBrushSize] = useState(30);
+  const [manualWhitelistMask, setManualWhitelistMask] = useState<boolean[]>([]);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const lastDrawPositionRef = useRef<{ x: number, y: number } | null>(null);
+  const [brushCursor, setBrushCursor] = useState<string>('default');
+  
+  // History for undo/redo
+  const [history, setHistory] = useState<boolean[][]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   // Save right tab selection to localStorage whenever it changes
   useEffect(() => {
@@ -57,6 +73,18 @@ export default function ImageDisplay({
   useEffect(() => {
     localStorage.setItem('imageZoomLevel', zoomLevel.toString());
   }, [zoomLevel]);
+
+  // Initialize the whitelist mask when image dimensions change
+  useEffect(() => {
+    if (imageDimensions.width > 0 && imageDimensions.height > 0) {
+      const emptyMask = new Array(imageDimensions.width * imageDimensions.height).fill(false);
+      setManualWhitelistMask(emptyMask);
+      // Reset history
+      setHistory([emptyMask]);
+      setHistoryIndex(0);
+      setHasUnsavedChanges(false);
+    }
+  }, [imageDimensions]);
 
   // Load the original image and get its dimensions
   useEffect(() => {
@@ -150,11 +178,41 @@ export default function ImageDisplay({
           
           // Draw the image at the scaled size
           ctx.drawImage(img, 0, 0, scaledWidth, scaledHeight);
+          
+          // Overlay the whitelisted pixels with a purple tint
+          if (manualWhitelistMask.some(v => v)) {
+            for (let y = 0; y < imageDimensions.height; y++) {
+              for (let x = 0; x < imageDimensions.width; x++) {
+                const pixelIndex = y * imageDimensions.width + x;
+                if (manualWhitelistMask[pixelIndex]) {
+                  const scaledX = Math.floor(x * zoomLevel);
+                  const scaledY = Math.floor(y * zoomLevel);
+                  ctx.fillStyle = 'rgba(200, 0, 255, 0.3)';
+                  ctx.fillRect(scaledX, scaledY, Math.ceil(zoomLevel), Math.ceil(zoomLevel));
+                }
+              }
+            }
+          }
+          
+          // If we're not drawing but hovering, show a preview of the brush size
+          if (isWhitelistBrushActive && !isDrawing && lastDrawPositionRef.current) {
+            const { x, y } = lastDrawPositionRef.current;
+            const scaledX = Math.floor(x * zoomLevel);
+            const scaledY = Math.floor(y * zoomLevel);
+            // Use the full brush size scaled by zoom
+            const scaledRadius = Math.floor(whitelistBrushSize * zoomLevel);
+            
+            ctx.beginPath();
+            ctx.arc(scaledX, scaledY, scaledRadius / 2, 0, Math.PI * 2);
+            ctx.strokeStyle = 'rgba(200, 0, 255, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+          }
         };
         img.src = originalImage;
       }
     }
-  }, [originalImage, zoomLevel, imageDimensions]);
+  }, [originalImage, zoomLevel, imageDimensions, isWhitelistBrushActive, manualWhitelistMask, isDrawing, whitelistBrushSize]);
 
   // Draw the processed image whenever it changes or when the right tab becomes active or zoom changes
   useEffect(() => {
@@ -232,6 +290,60 @@ export default function ImageDisplay({
     }
   }, [visualizationImage, rightActiveTab, zoomLevel, imageDimensions, isProcessing]);
 
+  // Update the cursor whenever the brush size changes or zoom changes
+  useEffect(() => {
+    if (isWhitelistBrushActive) {
+      // Create a custom cursor that's a circle with the same size as the brush
+      // Scale by zoom level since the cursor needs to match what will be drawn on screen
+      // The brush size represents the diameter of the brush in image coordinates
+      const visibleSize = Math.max(Math.ceil(whitelistBrushSize * zoomLevel), 10);
+      const cursorUrl = createCircleCursor(visibleSize);
+      setBrushCursor(`url(${cursorUrl}) ${visibleSize/2} ${visibleSize/2}, auto`);
+    } else {
+      setBrushCursor('default');
+    }
+  }, [whitelistBrushSize, isWhitelistBrushActive, zoomLevel]);
+
+  // Function to create a circular cursor with the full brush size
+  const createCircleCursor = (size: number): string => {
+    // Create a canvas to draw the cursor
+    const canvas = document.createElement('canvas');
+    const centerOffset = Math.ceil(size / 2);
+    // Make canvas slightly larger than the circle
+    const canvasSize = size + 4; // Add some padding
+    canvas.width = canvasSize;
+    canvas.height = canvasSize;
+    
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return '';
+    
+    // Make the canvas transparent
+    ctx.clearRect(0, 0, canvasSize, canvasSize);
+    
+    // Draw the cursor circle using the full radius (size/2)
+    ctx.beginPath();
+    ctx.arc(centerOffset, centerOffset, size / 2, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(200, 0, 255, 0.8)'; // Purple stroke matching our highlight color
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    
+    // Add a small crosshair in the center for precise positioning
+    const crosshairSize = 3;
+    ctx.beginPath();
+    // Horizontal line
+    ctx.moveTo(centerOffset - crosshairSize, centerOffset);
+    ctx.lineTo(centerOffset + crosshairSize, centerOffset);
+    // Vertical line
+    ctx.moveTo(centerOffset, centerOffset - crosshairSize);
+    ctx.lineTo(centerOffset, centerOffset + crosshairSize);
+    ctx.strokeStyle = 'rgba(200, 0, 255, 0.9)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    
+    // Convert to data URL
+    return canvas.toDataURL();
+  };
+
   const handleZoomIn = () => {
     setZoomLevel(prev => Math.min(prev + 0.1, 3.0)); // Maximum zoom: 300%
   };
@@ -242,6 +354,200 @@ export default function ImageDisplay({
 
   const handleResetZoom = () => {
     setZoomLevel(0.5); // Reset to default 50%
+  };
+
+  const handleWhitelistBrushToggle = () => {
+    setIsWhitelistBrushActive(!isWhitelistBrushActive);
+  };
+
+  const handleWhitelistBrushSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const size = parseInt(e.target.value, 10);
+    setWhitelistBrushSize(size);
+  };
+
+  // Add keyboard shortcut listeners for undo/redo
+  useEffect(() => {
+    const handleKeyDown = (e: globalThis.KeyboardEvent) => {
+      // Check if whitelist brush is active and we're not processing
+      if (!isWhitelistBrushActive || isProcessing) return;
+      
+      // Undo: Ctrl+Z
+      if (e.ctrlKey && e.key === 'z') {
+        e.preventDefault();
+        handleUndo();
+      }
+      
+      // Redo: Ctrl+Y or Ctrl+Shift+Z
+      if ((e.ctrlKey && e.key === 'y') || (e.ctrlKey && e.shiftKey && e.key === 'z')) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    
+    // Add global event listener
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Clean up
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isWhitelistBrushActive, isProcessing, history, historyIndex]);
+
+  // Save changes to history when drawing is complete
+  useEffect(() => {
+    if (hasUnsavedChanges && !isDrawing && onManualWhitelist) {
+      // Add current state to history
+      const updatedHistory = history.slice(0, historyIndex + 1);
+      updatedHistory.push([...manualWhitelistMask]);
+      
+      setHistory(updatedHistory);
+      setHistoryIndex(updatedHistory.length - 1);
+      setHasUnsavedChanges(false);
+      
+      // Notify parent component
+      onManualWhitelist(manualWhitelistMask);
+    }
+  }, [isDrawing, hasUnsavedChanges, manualWhitelistMask, history, historyIndex, onManualWhitelist]);
+
+  const handleUndo = () => {
+    if (historyIndex > 0 && !isDrawing && !isProcessing) {
+      const newIndex = historyIndex - 1;
+      const previousState = history[newIndex];
+      
+      setManualWhitelistMask([...previousState]);
+      setHistoryIndex(newIndex);
+      
+      if (onManualWhitelist) {
+        onManualWhitelist(previousState);
+      }
+    }
+  };
+  
+  const handleRedo = () => {
+    if (historyIndex < history.length - 1 && !isDrawing && !isProcessing) {
+      const newIndex = historyIndex + 1;
+      const nextState = history[newIndex];
+      
+      setManualWhitelistMask([...nextState]);
+      setHistoryIndex(newIndex);
+      
+      if (onManualWhitelist) {
+        onManualWhitelist(nextState);
+      }
+    }
+  };
+
+  const handleCanvasMouseDown = (e: MouseEvent<HTMLCanvasElement>) => {
+    if (!isWhitelistBrushActive || isProcessing) return;
+    
+    const canvas = originalCanvasRef.current;
+    if (!canvas) return;
+    
+    setIsDrawing(true);
+    setHasUnsavedChanges(true);
+    
+    // Get mouse position in canvas coordinates
+    const rect = canvas.getBoundingClientRect();
+    // Convert screen coordinates to image coordinates by dividing by zoom level
+    const imageX = (e.clientX - rect.left) / zoomLevel;
+    const imageY = (e.clientY - rect.top) / zoomLevel;
+    
+    // Apply the brush stroke at these image coordinates
+    applyBrushAtPosition(imageX, imageY);
+    lastDrawPositionRef.current = { x: imageX, y: imageY };
+  };
+
+  const handleCanvasMouseMove = (e: MouseEvent<HTMLCanvasElement>) => {
+    const canvas = originalCanvasRef.current;
+    if (!canvas) return;
+    
+    // Get mouse position in canvas coordinates
+    const rect = canvas.getBoundingClientRect();
+    // Convert screen coordinates to image coordinates by dividing by zoom level
+    const imageX = (e.clientX - rect.left) / zoomLevel;
+    const imageY = (e.clientY - rect.top) / zoomLevel;
+    
+    // Store the current position for brush preview
+    lastDrawPositionRef.current = { x: imageX, y: imageY };
+    
+    if (!isDrawing || !isWhitelistBrushActive || isProcessing) return;
+    
+    // If we have a last position, draw lines between points for continuous strokes
+    if (lastDrawPositionRef.current) {
+      const { x: lastX, y: lastY } = lastDrawPositionRef.current;
+      
+      // Calculate the distance in image coordinate space
+      const distance = Math.sqrt(Math.pow(imageX - lastX, 2) + Math.pow(imageY - lastY, 2));
+      
+      // Determine how many points to sample along the line
+      // More points needed for faster movements or larger brush sizes
+      const points = Math.max(1, Math.ceil(distance / (whitelistBrushSize * 0.25)));
+      
+      // Draw intermediate points to create a smooth line
+      for (let i = 0; i <= points; i++) {
+        const stepX = lastX + ((imageX - lastX) * i) / points;
+        const stepY = lastY + ((imageY - lastY) * i) / points;
+        applyBrushAtPosition(stepX, stepY);
+      }
+    } else {
+      applyBrushAtPosition(imageX, imageY);
+    }
+    
+    // Update the last position to the current position
+    lastDrawPositionRef.current = { x: imageX, y: imageY };
+  };
+
+  const handleCanvasMouseUp = () => {
+    if (isDrawing) {
+      setIsDrawing(false);
+      // The useEffect will handle adding to history and notifying parent
+    }
+    // Don't clear lastDrawPositionRef as we use it for hover preview
+  };
+
+  const handleCanvasMouseLeave = () => {
+    handleCanvasMouseUp();
+    lastDrawPositionRef.current = null;
+  };
+
+  /**
+   * Apply the whitelist brush at a specific image position
+   * @param x X position in IMAGE coordinates (not screen coordinates)
+   * @param y Y position in IMAGE coordinates (not screen coordinates)
+   */
+  const applyBrushAtPosition = (x: number, y: number) => {
+    if (imageDimensions.width === 0 || imageDimensions.height === 0) return;
+    
+    // Create a circular mask at the image coordinates using the brush size
+    // whitelistBrushSize represents the diameter of the brush in image coordinates
+    const updatedMask = createCircularWhitelistMask(
+      Math.round(x), 
+      Math.round(y), 
+      whitelistBrushSize / 2, // Convert from diameter to radius for the mask function
+      imageDimensions.width,
+      imageDimensions.height,
+      [...manualWhitelistMask]
+    );
+    
+    setManualWhitelistMask(updatedMask);
+  };
+
+  const handleClearWhitelist = () => {
+    if (imageDimensions.width > 0 && imageDimensions.height > 0 && !isProcessing) {
+      const clearMask = new Array(imageDimensions.width * imageDimensions.height).fill(false);
+      
+      // Add to history
+      const updatedHistory = history.slice(0, historyIndex + 1);
+      updatedHistory.push(clearMask);
+      
+      setManualWhitelistMask(clearMask);
+      setHistory(updatedHistory);
+      setHistoryIndex(updatedHistory.length - 1);
+      
+      if (onManualWhitelist) {
+        onManualWhitelist(clearMask);
+      }
+    }
   };
 
   if (!originalImage) {
@@ -416,6 +722,38 @@ export default function ImageDisplay({
     boxShadow: '0 2px 4px rgba(0, 0, 0, 0.2)'
   };
 
+  const brushControlsStyle: React.CSSProperties = {
+    display: 'flex',
+    alignItems: 'center',
+    marginLeft: '20px',
+    gap: '10px'
+  };
+
+  const sliderContainerStyle: React.CSSProperties = {
+    display: 'flex',
+    flexDirection: 'column',
+    alignItems: 'center',
+    gap: '4px'
+  };
+
+  const sliderLabelStyle: React.CSSProperties = {
+    fontSize: '12px',
+    color: '#555'
+  };
+
+  const whiteBrushButtonStyle: React.CSSProperties = {
+    ...zoomButtonStyle,
+    backgroundColor: isWhitelistBrushActive ? '#f0c0ff' : '#f0f0f0',
+    borderColor: isWhitelistBrushActive ? '#a040a0' : '#ccc',
+  };
+
+  // Style for disabled buttons
+  const disabledButtonStyle: React.CSSProperties = {
+    ...zoomButtonStyle,
+    opacity: 0.5,
+    cursor: 'not-allowed'
+  };
+
   return (
     <div className="image-display" style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column' }}>
       <div style={zoomControlsStyle}>
@@ -431,6 +769,63 @@ export default function ImageDisplay({
         <button style={zoomButtonStyle} onClick={handleResetZoom} title="Reset zoom">
           Reset
         </button>
+
+        <div style={brushControlsStyle}>
+          <button 
+            style={whiteBrushButtonStyle} 
+            onClick={handleWhitelistBrushToggle}
+            title={isWhitelistBrushActive ? "Disable whitelist brush" : "Enable whitelist brush"}
+            disabled={isProcessing}
+          >
+            Whitelist Brush
+          </button>
+          
+          {isWhitelistBrushActive && (
+            <>
+              <div style={sliderContainerStyle}>
+                <input
+                  type="range"
+                  min="1"
+                  max="100"
+                  value={whitelistBrushSize}
+                  onChange={handleWhitelistBrushSizeChange}
+                  disabled={isProcessing}
+                />
+                <div style={sliderLabelStyle}>
+                  <div>Brush Diameter: {whitelistBrushSize} px in image</div>
+                  <div>Screen Diameter: {Math.round(whitelistBrushSize * zoomLevel)} px at {Math.round(zoomLevel * 100)}% zoom</div>
+                </div>
+              </div>
+              
+              <button 
+                style={historyIndex > 0 ? zoomButtonStyle : disabledButtonStyle} 
+                onClick={handleUndo}
+                title="Undo (Ctrl+Z)"
+                disabled={historyIndex <= 0 || isProcessing}
+              >
+                Undo
+              </button>
+              
+              <button 
+                style={historyIndex < history.length - 1 ? zoomButtonStyle : disabledButtonStyle} 
+                onClick={handleRedo}
+                title="Redo (Ctrl+Y)"
+                disabled={historyIndex >= history.length - 1 || isProcessing}
+              >
+                Redo
+              </button>
+              
+              <button 
+                style={zoomButtonStyle} 
+                onClick={handleClearWhitelist}
+                title="Clear all manually whitelisted pixels"
+                disabled={isProcessing}
+              >
+                Clear
+              </button>
+            </>
+          )}
+        </div>
       </div>
     
       <div style={sideBySideContainerStyle}>
@@ -445,7 +840,11 @@ export default function ImageDisplay({
               <div style={canvasWrapperStyle}>
                 <canvas 
                   ref={originalCanvasRef}
-                  style={canvasStyle}
+                  style={{...canvasStyle, cursor: brushCursor}}
+                  onMouseDown={handleCanvasMouseDown}
+                  onMouseMove={handleCanvasMouseMove}
+                  onMouseUp={handleCanvasMouseUp}
+                  onMouseLeave={handleCanvasMouseLeave}
                 ></canvas>
               </div>
             </div>

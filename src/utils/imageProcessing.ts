@@ -7,6 +7,7 @@ interface ProcessingParams {
   structuringElementSize: number;
   blurKernelSize: number;
   morphOpeningKernelSize: number;
+  manualWhitelistMask?: boolean[]; // Optional mask for manually whitelisted pixels
 }
 
 export const defaultParams: ProcessingParams = {
@@ -31,6 +32,7 @@ interface ProcessingResult {
     nearBlackPixels: number;
     replacedPixels: number;
     blackPixels: number;
+    manuallyWhitelistedPixels: number; // Count of manually whitelisted pixels
     thresholds: {
       brightnessThreshold: number;
       saturationThreshold: number;
@@ -73,6 +75,7 @@ export async function processImage(
         nearBlackPixels: 0,
         replacedPixels: 0,
         blackPixels: 0,
+        manuallyWhitelistedPixels: 0, // Initialize manual whitelist counter
         thresholds: {
           brightnessThreshold: params.brightnessThreshold,
           saturationThreshold: params.saturationThreshold,
@@ -102,6 +105,20 @@ export async function processImage(
 
       // Find black pixels first for visualization and near-black checks
       const blackPixelsMask: boolean[] = new Array(width * height).fill(false);
+      
+      // Create a mask for manually whitelisted pixels
+      const manualWhitelistMask: boolean[] = new Array(width * height).fill(false);
+      
+      // Apply manual whitelist mask if provided
+      if (params.manualWhitelistMask) {
+        for (let i = 0; i < params.manualWhitelistMask.length && i < manualWhitelistMask.length; i++) {
+          manualWhitelistMask[i] = params.manualWhitelistMask[i];
+          if (params.manualWhitelistMask[i]) {
+            stats.manuallyWhitelistedPixels++;
+          }
+        }
+      }
+      
       for (let pixelIndex = 0; pixelIndex < hsvValues.length; pixelIndex++) {
         const idx = pixelIndex * 4;
         const a = data[idx + 3]; // Check alpha channel
@@ -126,6 +143,13 @@ export async function processImage(
           visualization[idx + 1] = 0; // G
           visualization[idx + 2] = 0; // B
         }
+        
+        // Visualize manually whitelisted pixels in purple
+        if (manualWhitelistMask[pixelIndex]) {
+          visualization[idx] = 200;     // R (purple)
+          visualization[idx + 1] = 0;   // G
+          visualization[idx + 2] = 255; // B
+        }
       }
 
       // Create intermediate mask (before near-black filtering and morphology)
@@ -141,6 +165,9 @@ export async function processImage(
 
           // Skip transparent pixels
           if (a === 0) continue;
+          
+          // Skip manually whitelisted pixels
+          if (manualWhitelistMask[pixelIndex]) continue;
 
           // Use precomputed HSV values
           const hsv = hsvValues[pixelIndex];
@@ -184,6 +211,9 @@ export async function processImage(
         for (let x = 0; x < width; x++) {
           const pixelIndex = y * width + x;
 
+          // Skip manually whitelisted pixels
+          if (manualWhitelistMask[pixelIndex]) continue;
+
           // Only consider pixels marked in the initial mask and non-transparent
           // (Transparency check already done when building initialMask)
           if (!initialMask[pixelIndex]) continue;
@@ -220,6 +250,20 @@ export async function processImage(
 
       // 5) Apply the *opened* mask to the result image
       for (let pixelIndex = 0; pixelIndex < openedMask.length; pixelIndex++) {
+          // Skip manually whitelisted pixels
+          if (manualWhitelistMask[pixelIndex]) {
+              // Update both result and visualization for manually whitelisted pixels
+              const idx = pixelIndex * 4;
+              // Keep original pixel in result
+              // (already copied from original data)
+              
+              // Color manually whitelisted pixels purple in visualization
+              visualization[idx] = 200;     // R (purple)
+              visualization[idx + 1] = 0;   // G
+              visualization[idx + 2] = 255; // B
+              continue;
+          }
+          
           if (openedMask[pixelIndex]) { // Use openedMask here
               const idx = pixelIndex * 4;
               // Set to transparent in result
@@ -423,4 +467,76 @@ function dilateMask(mask: boolean[], width: number, height: number, kernelSize: 
 function morphologicalOpenMask(mask: boolean[], width: number, height: number, kernelSize: number): boolean[] {
   const eroded = erodeMask(mask, width, height, kernelSize);
   return dilateMask(eroded, width, height, kernelSize);
+}
+
+/**
+ * Creates a circular mask of manually whitelisted pixels around a point
+ * @param x Center x coordinate
+ * @param y Center y coordinate
+ * @param radius Radius of the circle in pixels (half the diameter)
+ * @param width Image width
+ * @param height Image height
+ * @param existingMask Optional existing mask to update
+ * @returns Boolean mask with true values inside the circle
+ */
+export function createCircularWhitelistMask(
+  x: number,
+  y: number,
+  radius: number,
+  width: number,
+  height: number,
+  existingMask?: boolean[]
+): boolean[] {
+  const mask = existingMask || new Array(width * height).fill(false);
+  
+  // Ensure radius is at least 1 pixel
+  const effectiveRadius = Math.max(1, radius);
+  const radiusSquared = effectiveRadius * effectiveRadius;
+  
+  // Calculate bounds of the affected area - ensure we're within image boundaries
+  const startX = Math.max(0, Math.floor(x - effectiveRadius));
+  const endX = Math.min(width - 1, Math.ceil(x + effectiveRadius));
+  const startY = Math.max(0, Math.floor(y - effectiveRadius));
+  const endY = Math.min(height - 1, Math.ceil(y + effectiveRadius));
+  
+  // Set mask values for pixels inside the circle
+  for (let py = startY; py <= endY; py++) {
+    for (let px = startX; px <= endX; px++) {
+      // Calculate squared distance from center
+      const dx = px - x;
+      const dy = py - y;
+      const distanceSquared = dx * dx + dy * dy;
+      
+      // If pixel is inside the circle (or on the boundary), mark it as whitelisted
+      if (distanceSquared <= radiusSquared) {
+        const pixelIndex = py * width + px;
+        if (pixelIndex >= 0 && pixelIndex < mask.length) {
+          mask[pixelIndex] = true;
+        }
+      }
+    }
+  }
+  
+  return mask;
+}
+
+/**
+ * Creates a mask from a series of brush strokes
+ * @param strokes Array of [x, y, radius] points
+ * @param width Image width
+ * @param height Image height
+ * @returns Boolean mask with true values for all pixels affected by the strokes
+ */
+export function createStrokesWhitelistMask(
+  strokes: Array<[number, number, number]>,
+  width: number,
+  height: number
+): boolean[] {
+  let mask = new Array(width * height).fill(false);
+  
+  for (const [x, y, radius] of strokes) {
+    mask = createCircularWhitelistMask(x, y, radius, width, height, mask);
+  }
+  
+  return mask;
 }
