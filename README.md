@@ -1,5 +1,7 @@
 # Scanned Image Cleaner
 
+[![CI](https://github.com/RKeelan/scanned-image-cleaner/actions/workflows/deploy.yml/badge.svg)](https://github.com/RKeelan/scanned-image-cleaner/actions/workflows/deploy.yml)
+
 An interactive web application for cleaning up artifacts and unwanted elements from scanned images.
 
 ## Features
