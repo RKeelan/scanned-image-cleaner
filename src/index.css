@@ -1,5 +1,5 @@
 :root {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -15,7 +15,8 @@
   padding: 0;
 }
 
-html, body {
+html,
+body {
   height: 100%;
   width: 100%;
 }

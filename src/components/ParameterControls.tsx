@@ -1,86 +1,84 @@
-import { ChangeEvent, useEffect, useState } from 'react';
-import { defaultParams } from '../utils/imageProcessing';
+import { type ChangeEvent, useEffect, useState } from 'react'
+import type { defaultParams } from '../utils/imageProcessing'
 
 interface ParameterControlsProps {
-  parameters: typeof defaultParams;
-  onChange: (name: keyof typeof defaultParams, value: number) => void;
-  isProcessing: boolean;
+  parameters: typeof defaultParams
+  onChange: (name: keyof typeof defaultParams, value: number) => void
+  isProcessing: boolean
 }
 
-export default function ParameterControls({ 
-  parameters, 
-  onChange, 
-  isProcessing 
+export default function ParameterControls({
+  parameters,
+  onChange,
+  isProcessing,
 }: ParameterControlsProps) {
   // Create local state to show immediate feedback while sliding
-  const [localValues, setLocalValues] = useState(parameters);
+  const [localValues, setLocalValues] = useState(parameters)
 
   // Update local values when parameters change from outside
   useEffect(() => {
-    setLocalValues(parameters);
-  }, [parameters]);
+    setLocalValues(parameters)
+  }, [parameters])
 
   const handleSliderChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    const numValue = Number(value);
-    const paramName = name as keyof typeof defaultParams;
-    
+    const { name, value } = e.target
+    const numValue = Number(value)
+    const paramName = name as keyof typeof defaultParams
+
     // Update local state immediately
-    setLocalValues(prev => ({
+    setLocalValues((prev) => ({
       ...prev,
-      [paramName]: numValue
-    }));
-    
+      [paramName]: numValue,
+    }))
+
     // Pass change to parent component
-    onChange(paramName, numValue);
-  };
+    onChange(paramName, numValue)
+  }
 
   const handleTextInputChange = (e: ChangeEvent<HTMLInputElement>) => {
-    const { name, value } = e.target;
-    const rawName = name.replace('Text', '');
-    const paramName = rawName as keyof typeof defaultParams;
-    
+    const { name, value } = e.target
+    const rawName = name.replace('Text', '')
+    const paramName = rawName as keyof typeof defaultParams
+
     // Convert to number, handle empty string
-    let numValue = value === '' ? 0 : Number(value);
-    
+    let numValue = value === '' ? 0 : Number(value)
+
     // Apply min/max constraints based on the parameter
     switch (paramName) {
       case 'brightnessThreshold':
-        numValue = Math.min(Math.max(numValue, 0), 100);
-        break;
+        numValue = Math.min(Math.max(numValue, 0), 100)
+        break
       case 'saturationThreshold':
       case 'meanSaturationThreshold':
       case 'blackPixelBrightnessThreshold':
       case 'blackPixelSaturationThreshold':
-        numValue = Math.min(Math.max(numValue, 0), 100);
-        break;
+        numValue = Math.min(Math.max(numValue, 0), 100)
+        break
       case 'structuringElementSize':
       case 'blurKernelSize':
       case 'morphOpeningKernelSize':
         // Ensure odd values for kernel sizes
-        numValue = Math.max(numValue, 3);
-        if (numValue % 2 === 0) numValue += 1;
-        break;
+        numValue = Math.max(numValue, 3)
+        if (numValue % 2 === 0) numValue += 1
+        break
     }
-    
+
     // Update local state immediately
-    setLocalValues(prev => ({
+    setLocalValues((prev) => ({
       ...prev,
-      [paramName]: numValue
-    }));
-    
+      [paramName]: numValue,
+    }))
+
     // Pass change to parent component
-    onChange(paramName, numValue);
-  };
+    onChange(paramName, numValue)
+  }
 
   return (
     <div className="parameter-controls">
       <h3>Algorithm Parameters</h3>
-      
+
       <div className="parameter-group">
-        <label htmlFor="brightnessThreshold">
-          Brightness Threshold:
-        </label>
+        <label htmlFor="brightnessThreshold">Brightness Threshold:</label>
         <div className="input-group">
           <input
             type="range"
@@ -92,8 +90,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="brightnessThresholdText"
             name="brightnessThresholdText"
             min="0"
@@ -106,9 +104,7 @@ export default function ParameterControls({
       </div>
 
       <div className="parameter-group">
-        <label htmlFor="saturationThreshold">
-          Saturation Threshold:
-        </label>
+        <label htmlFor="saturationThreshold">Saturation Threshold:</label>
         <div className="input-group">
           <input
             type="range"
@@ -120,8 +116,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="saturationThresholdText"
             name="saturationThresholdText"
             min="0"
@@ -148,8 +144,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="meanSaturationThresholdText"
             name="meanSaturationThresholdText"
             min="0"
@@ -176,8 +172,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="blackPixelBrightnessThresholdText"
             name="blackPixelBrightnessThresholdText"
             min="0"
@@ -204,8 +200,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="blackPixelSaturationThresholdText"
             name="blackPixelSaturationThresholdText"
             min="0"
@@ -233,8 +229,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="structuringElementSizeText"
             name="structuringElementSizeText"
             min="3"
@@ -248,9 +244,7 @@ export default function ParameterControls({
       </div>
 
       <div className="parameter-group">
-        <label htmlFor="blurKernelSize">
-          Blur Kernel Size:
-        </label>
+        <label htmlFor="blurKernelSize">Blur Kernel Size:</label>
         <div className="input-group">
           <input
             type="range"
@@ -263,8 +257,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="blurKernelSizeText"
             name="blurKernelSizeText"
             min="3"
@@ -293,8 +287,8 @@ export default function ParameterControls({
             onChange={handleSliderChange}
             disabled={isProcessing}
           />
-          <input 
-            type="number" 
+          <input
+            type="number"
             id="morphOpeningKernelSizeText"
             name="morphOpeningKernelSizeText"
             min="3"
@@ -307,5 +301,5 @@ export default function ParameterControls({
         </div>
       </div>
     </div>
-  );
-} 
+  )
+}
