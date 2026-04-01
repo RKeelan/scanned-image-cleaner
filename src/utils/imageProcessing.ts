@@ -1,13 +1,13 @@
 interface ProcessingParams {
-  brightnessThreshold: number;
-  saturationThreshold: number;
-  meanSaturationThreshold: number;
-  blackPixelBrightnessThreshold: number;
-  blackPixelSaturationThreshold: number;
-  structuringElementSize: number;
-  blurKernelSize: number;
-  morphOpeningKernelSize: number;
-  manualWhitelistMask?: boolean[]; // Optional mask for manually whitelisted pixels
+  brightnessThreshold: number
+  saturationThreshold: number
+  meanSaturationThreshold: number
+  blackPixelBrightnessThreshold: number
+  blackPixelSaturationThreshold: number
+  structuringElementSize: number
+  blurKernelSize: number
+  morphOpeningKernelSize: number
+  manualWhitelistMask?: boolean[] // Optional mask for manually whitelisted pixels
 }
 
 export const defaultParams: ProcessingParams = {
@@ -19,31 +19,31 @@ export const defaultParams: ProcessingParams = {
   structuringElementSize: 25,
   blurKernelSize: 12,
   morphOpeningKernelSize: 3,
-};
+}
 
-interface ProcessingResult {
-  processedImage: ImageData;
-  visualizationImage: ImageData;
+export interface ProcessingResult {
+  processedImage: ImageData
+  visualizationImage: ImageData
   stats: {
-    brightPixels: number;
-    lowSaturationPixels: number;
-    candidateArtifacts: number;
-    lowSaturationAreas: number;
-    nearBlackPixels: number;
-    replacedPixels: number;
-    blackPixels: number;
-    manuallyWhitelistedPixels: number; // Count of manually whitelisted pixels
+    brightPixels: number
+    lowSaturationPixels: number
+    candidateArtifacts: number
+    lowSaturationAreas: number
+    nearBlackPixels: number
+    replacedPixels: number
+    blackPixels: number
+    manuallyWhitelistedPixels: number // Count of manually whitelisted pixels
     thresholds: {
-      brightnessThreshold: number;
-      saturationThreshold: number;
-      meanSaturationThreshold: number;
-      blackPixelBrightnessThreshold: number;
-      blackPixelSaturationThreshold: number;
-      structuringElementSize: number;
-      blurKernelSize: number;
-      morphOpeningKernelSize: number;
-    };
-  };
+      brightnessThreshold: number
+      saturationThreshold: number
+      meanSaturationThreshold: number
+      blackPixelBrightnessThreshold: number
+      blackPixelSaturationThreshold: number
+      structuringElementSize: number
+      blurKernelSize: number
+      morphOpeningKernelSize: number
+    }
+  }
 }
 
 /**
@@ -54,18 +54,18 @@ interface ProcessingResult {
  */
 export async function processImage(
   imageData: ImageData,
-  params: ProcessingParams = defaultParams
+  params: ProcessingParams = defaultParams,
 ): Promise<ProcessingResult> {
-  console.log('Processing with parameters:', params);
-  
+  console.log('Processing with parameters:', params)
+
   // Return a promise to allow for asynchronous processing
   return new Promise((resolve) => {
     // Use setTimeout to allow UI updates between processing
     setTimeout(() => {
-      const { width, height, data } = imageData;
-      const result = new Uint8ClampedArray(data.length);
-      const visualization = new Uint8ClampedArray(data.length);
-      
+      const { width, height, data } = imageData
+      const result = new Uint8ClampedArray(data.length)
+      const visualization = new Uint8ClampedArray(data.length)
+
       // Stats for logging
       const stats = {
         brightPixels: 0,
@@ -84,211 +84,233 @@ export async function processImage(
           blackPixelSaturationThreshold: params.blackPixelSaturationThreshold,
           structuringElementSize: params.structuringElementSize,
           blurKernelSize: params.blurKernelSize,
-          morphOpeningKernelSize: params.morphOpeningKernelSize
-        }
-      };
-      
+          morphOpeningKernelSize: params.morphOpeningKernelSize,
+        },
+      }
+
       // Copy the original data first
       for (let i = 0; i < data.length; i++) {
-        result[i] = data[i];
-        visualization[i] = data[i];
+        result[i] = data[i]
+        visualization[i] = data[i]
       }
 
       // Precompute HSV values for all pixels to avoid repeated conversions
-      const hsvValues: Array<[number, number, number]> = [];
+      const hsvValues: Array<[number, number, number]> = []
       for (let i = 0; i < data.length; i += 4) {
-        const r = data[i];
-        const g = data[i + 1];
-        const b = data[i + 2];
-        hsvValues.push(rgbToHsv(r, g, b));
+        const r = data[i]
+        const g = data[i + 1]
+        const b = data[i + 2]
+        hsvValues.push(rgbToHsv(r, g, b))
       }
 
       // Find black pixels first for visualization and near-black checks
-      const blackPixelsMask: boolean[] = new Array(width * height).fill(false);
-      
+      const blackPixelsMask: boolean[] = new Array(width * height).fill(false)
+
       // Create a mask for manually whitelisted pixels
-      const manualWhitelistMask: boolean[] = new Array(width * height).fill(false);
-      
+      const manualWhitelistMask: boolean[] = new Array(width * height).fill(
+        false,
+      )
+
       // Apply manual whitelist mask if provided
       if (params.manualWhitelistMask) {
-        for (let i = 0; i < params.manualWhitelistMask.length && i < manualWhitelistMask.length; i++) {
-          manualWhitelistMask[i] = params.manualWhitelistMask[i];
+        for (
+          let i = 0;
+          i < params.manualWhitelistMask.length &&
+          i < manualWhitelistMask.length;
+          i++
+        ) {
+          manualWhitelistMask[i] = params.manualWhitelistMask[i]
           if (params.manualWhitelistMask[i]) {
-            stats.manuallyWhitelistedPixels++;
+            stats.manuallyWhitelistedPixels++
           }
         }
       }
-      
+
       for (let pixelIndex = 0; pixelIndex < hsvValues.length; pixelIndex++) {
-        const idx = pixelIndex * 4;
-        const a = data[idx + 3]; // Check alpha channel
+        const idx = pixelIndex * 4
+        const a = data[idx + 3] // Check alpha channel
 
         // Skip transparent pixels
-        if (a === 0) continue;
+        if (a === 0) continue
 
-        const hsv = hsvValues[pixelIndex];
-        const v = hsv[2];
-        const s = hsv[1];
+        const hsv = hsvValues[pixelIndex]
+        const v = hsv[2]
+        const s = hsv[1]
 
-        const isBlack = v < params.blackPixelBrightnessThreshold &&
-                        s < params.blackPixelSaturationThreshold;
+        const isBlack =
+          v < params.blackPixelBrightnessThreshold &&
+          s < params.blackPixelSaturationThreshold
 
-        blackPixelsMask[pixelIndex] = isBlack; // Set mask value here
+        blackPixelsMask[pixelIndex] = isBlack // Set mask value here
 
         if (isBlack) {
-          stats.blackPixels++;
+          stats.blackPixels++
 
           // Color black pixels red in visualization
-          visualization[idx] = 255;   // R
-          visualization[idx + 1] = 0; // G
-          visualization[idx + 2] = 0; // B
+          visualization[idx] = 255 // R
+          visualization[idx + 1] = 0 // G
+          visualization[idx + 2] = 0 // B
         }
-        
+
         // Visualize manually whitelisted pixels in purple
         if (manualWhitelistMask[pixelIndex]) {
-          visualization[idx] = 200;     // R (purple)
-          visualization[idx + 1] = 0;   // G
-          visualization[idx + 2] = 255; // B
+          visualization[idx] = 200 // R (purple)
+          visualization[idx + 1] = 0 // G
+          visualization[idx + 2] = 255 // B
         }
       }
 
       // Create intermediate mask (before near-black filtering and morphology)
       // True indicates a pixel initially marked for replacement
-      const initialMask: boolean[] = new Array(width * height).fill(false);
+      const initialMask: boolean[] = new Array(width * height).fill(false)
 
       // For each pixel
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const idx = (y * width + x) * 4;
-          const pixelIndex = Math.floor(idx / 4);
-          const a = data[idx + 3];
+          const idx = (y * width + x) * 4
+          const pixelIndex = Math.floor(idx / 4)
+          const a = data[idx + 3]
 
           // Skip transparent pixels
-          if (a === 0) continue;
-          
+          if (a === 0) continue
+
           // Skip manually whitelisted pixels
-          if (manualWhitelistMask[pixelIndex]) continue;
+          if (manualWhitelistMask[pixelIndex]) continue
 
           // Use precomputed HSV values
-          const hsv = hsvValues[pixelIndex];
+          const hsv = hsvValues[pixelIndex]
           // hue (hsv[0]) is not needed
-          const s = hsv[1];
-          const v = hsv[2];
+          const s = hsv[1]
+          const v = hsv[2]
           //console.log("Pixel", x, y, "Saturation:", s, "Brightness:", v);
 
           // Check if this is a candidate artifact (bright + unsaturated)
-          const isBright = v > params.brightnessThreshold;
+          const isBright = v > params.brightnessThreshold
           if (isBright) {
-            stats.brightPixels++;
+            stats.brightPixels++
           }
-          const isLowSaturation = s < params.saturationThreshold;
+          const isLowSaturation = s < params.saturationThreshold
           if (isLowSaturation) {
-            stats.lowSaturationPixels++;
+            stats.lowSaturationPixels++
           }
-          const isCandidateArtifact = isBright && isLowSaturation;
-          
+          const isCandidateArtifact = isBright && isLowSaturation
+
           if (isCandidateArtifact) {
-            stats.candidateArtifacts++;
-            
+            stats.candidateArtifacts++
+
             // Calculate local mean saturation
-            const meanSat = calculateLocalMeanSaturation(data, hsvValues, width, height, x, y, params.blurKernelSize);
-            
+            const meanSat = calculateLocalMeanSaturation(
+              data,
+              hsvValues,
+              width,
+              height,
+              x,
+              y,
+              params.blurKernelSize,
+            )
+
             if (meanSat < params.meanSaturationThreshold) {
-              stats.lowSaturationAreas++;
-              
+              stats.lowSaturationAreas++
+
               // Mark this pixel as potentially needing replacement in the initial mask
-              initialMask[pixelIndex] = true;
+              initialMask[pixelIndex] = true
             }
           }
         }
       }
 
       // Create the final mask after applying filters
-      const finalMask: boolean[] = new Array(width * height).fill(false);
+      const finalMask: boolean[] = new Array(width * height).fill(false)
 
       // Now, filter the initialMask based on proximity to black pixels
       for (let y = 0; y < height; y++) {
         for (let x = 0; x < width; x++) {
-          const pixelIndex = y * width + x;
+          const pixelIndex = y * width + x
 
           // Skip manually whitelisted pixels
-          if (manualWhitelistMask[pixelIndex]) continue;
+          if (manualWhitelistMask[pixelIndex]) continue
 
           // Only consider pixels marked in the initial mask and non-transparent
           // (Transparency check already done when building initialMask)
-          if (!initialMask[pixelIndex]) continue;
+          if (!initialMask[pixelIndex]) continue
 
           // 3) Check if it's near a black pixel (using precomputed blackPixelsMask for efficiency)
           const isNearBlack = isNearBlackPixelOptimized(
-              blackPixelsMask, // Use the corrected mask
-              width,
-              height,
-              x,
-              y,
-              params.structuringElementSize
-          );
+            blackPixelsMask, // Use the corrected mask
+            width,
+            height,
+            x,
+            y,
+            params.structuringElementSize,
+          )
 
           if (isNearBlack) {
-            stats.nearBlackPixels++; // This pixel is whitelisted
+            stats.nearBlackPixels++ // This pixel is whitelisted
 
-            // Color whitelisted pixels blue in visualization 
-            const idx = pixelIndex * 4;
-            visualization[idx] = 0;       // R
-            visualization[idx + 1] = 0;   // G
-            visualization[idx + 2] = 255; // B
+            // Color whitelisted pixels blue in visualization
+            const idx = pixelIndex * 4
+            visualization[idx] = 0 // R
+            visualization[idx + 1] = 0 // G
+            visualization[idx + 2] = 255 // B
           } else {
             // This pixel is not near black and remains a candidate for replacement
-            finalMask[pixelIndex] = true;
-            stats.replacedPixels++; // Count potential replacements here
-             // No specific color for replaced pixels in visualization now
+            finalMask[pixelIndex] = true
+            stats.replacedPixels++ // Count potential replacements here
+            // No specific color for replaced pixels in visualization now
           }
         }
       }
 
       // Apply Morphological Opening to finalMask here
-      const openedMask = morphologicalOpenMask(finalMask, width, height, params.morphOpeningKernelSize);
+      const openedMask = morphologicalOpenMask(
+        finalMask,
+        width,
+        height,
+        params.morphOpeningKernelSize,
+      )
 
       // 5) Apply the *opened* mask to the result image
       for (let pixelIndex = 0; pixelIndex < openedMask.length; pixelIndex++) {
-          // Skip manually whitelisted pixels
-          if (manualWhitelistMask[pixelIndex]) {
-              // Update both result and visualization for manually whitelisted pixels
-              const idx = pixelIndex * 4;
-              // Keep original pixel in result
-              // (already copied from original data)
-              
-              // Color manually whitelisted pixels purple in visualization
-              visualization[idx] = 200;     // R (purple)
-              visualization[idx + 1] = 0;   // G
-              visualization[idx + 2] = 255; // B
-              continue;
-          }
-          
-          if (openedMask[pixelIndex]) { // Use openedMask here
-              const idx = pixelIndex * 4;
-              // Set to transparent in result
-              // The RGB values don't matter when fully transparent
-              result[idx] = 0;       // R
-              result[idx + 1] = 0;   // G
-              result[idx + 2] = 0;   // B
-              result[idx + 3] = 0;   // A (0 = fully transparent)
-              
-              // Color replaced pixels green in visualization
-              visualization[idx] = 0;       // R
-              visualization[idx + 1] = 255; // G
-              visualization[idx + 2] = 0;   // B
-          }
+        // Skip manually whitelisted pixels
+        if (manualWhitelistMask[pixelIndex]) {
+          // Update both result and visualization for manually whitelisted pixels
+          const idx = pixelIndex * 4
+          // Keep original pixel in result
+          // (already copied from original data)
+
+          // Color manually whitelisted pixels purple in visualization
+          visualization[idx] = 200 // R (purple)
+          visualization[idx + 1] = 0 // G
+          visualization[idx + 2] = 255 // B
+          continue
+        }
+
+        if (openedMask[pixelIndex]) {
+          // Use openedMask here
+          const idx = pixelIndex * 4
+          // Set to transparent in result
+          // The RGB values don't matter when fully transparent
+          result[idx] = 0 // R
+          result[idx + 1] = 0 // G
+          result[idx + 2] = 0 // B
+          result[idx + 3] = 0 // A (0 = fully transparent)
+
+          // Color replaced pixels green in visualization
+          visualization[idx] = 0 // R
+          visualization[idx + 1] = 255 // G
+          visualization[idx + 2] = 0 // B
+        }
       }
 
-      console.log('Processing completed with stats:', stats);
-      
+      console.log('Processing completed with stats:', stats)
+
       resolve({
         processedImage: new ImageData(result, width, height),
         visualizationImage: new ImageData(visualization, width, height),
-        stats
-      });
-    }, 0);
-  });
+        stats,
+      })
+    }, 0)
+  })
 }
 
 /**
@@ -299,34 +321,34 @@ export async function processImage(
  * @returns [h, s, v] where h is in degrees [0-360), s is in [0-100], v is in [0-100]
  */
 function rgbToHsv(r: number, g: number, b: number): [number, number, number] {
-  r /= 255;
-  g /= 255;
-  b /= 255;
+  r /= 255
+  g /= 255
+  b /= 255
 
-  const max = Math.max(r, g, b);
-  const min = Math.min(r, g, b);
-  const d = max - min;
-  
-  let h = 0;
-  const s = max === 0 ? 0 : d / max;
-  const v = max;
+  const max = Math.max(r, g, b)
+  const min = Math.min(r, g, b)
+  const d = max - min
+
+  let h = 0
+  const s = max === 0 ? 0 : d / max
+  const v = max
 
   if (max !== min) {
     switch (max) {
       case r:
-        h = (g - b) / d + (g < b ? 6 : 0);
-        break;
+        h = (g - b) / d + (g < b ? 6 : 0)
+        break
       case g:
-        h = (b - r) / d + 2;
-        break;
+        h = (b - r) / d + 2
+        break
       case b:
-        h = (r - g) / d + 4;
-        break;
+        h = (r - g) / d + 4
+        break
     }
-    h /= 6;
+    h /= 6
   }
 
-  return [h * 360, s * 100, v * 100];
+  return [h * 360, s * 100, v * 100]
 }
 
 /**
@@ -340,31 +362,39 @@ function calculateLocalMeanSaturation(
   height: number,
   x: number,
   y: number,
-  kernelSize: number
+  kernelSize: number,
 ): number {
-  const halfKernel = Math.floor(kernelSize / 2);
-  let totalSaturation = 0;
-  let count = 0;
+  const halfKernel = Math.floor(kernelSize / 2)
+  let totalSaturation = 0
+  let count = 0
 
   // Use all pixels in the kernel area, including transparent ones with zero weight
   // This matches OpenCV's blur behavior which uses zero padding
-  for (let ky = Math.max(0, y - halfKernel); ky < Math.min(height, y + halfKernel + 1); ky++) {
-    for (let kx = Math.max(0, x - halfKernel); kx < Math.min(width, x + halfKernel + 1); kx++) {
-      const idx = (ky * width + kx) * 4;
-      const pixelIndex = Math.floor(idx / 4);
-      const a = data[idx + 3];
+  for (
+    let ky = Math.max(0, y - halfKernel);
+    ky < Math.min(height, y + halfKernel + 1);
+    ky++
+  ) {
+    for (
+      let kx = Math.max(0, x - halfKernel);
+      kx < Math.min(width, x + halfKernel + 1);
+      kx++
+    ) {
+      const idx = (ky * width + kx) * 4
+      const pixelIndex = Math.floor(idx / 4)
+      const a = data[idx + 3]
 
       // Include all pixels in the kernel area, but use saturation value only for non-transparent pixels
       if (a > 0) {
-        totalSaturation += hsvValues[pixelIndex][1];
+        totalSaturation += hsvValues[pixelIndex][1]
       }
       // Always count the pixel for averaging (OpenCV's blur counts all pixels in kernel)
-      count++;
+      count++
     }
   }
 
   // Divide by total count (OpenCV's behavior)
-  return count > 0 ? totalSaturation / count : 0;
+  return count > 0 ? totalSaturation / count : 0
 }
 
 /**
@@ -377,96 +407,135 @@ function isNearBlackPixelOptimized(
   height: number,
   x: number,
   y: number,
-  structureSize: number
+  structureSize: number,
 ): boolean {
-  const halfSize = Math.floor(structureSize / 2);
+  const halfSize = Math.floor(structureSize / 2)
   // Using square of distance to avoid unnecessary sqrt calculations
-  const radiusSquared = halfSize * halfSize;
+  const radiusSquared = halfSize * halfSize
 
-  for (let ky = Math.max(0, y - halfSize); ky < Math.min(height, y + halfSize + 1); ky++) {
-    for (let kx = Math.max(0, x - halfSize); kx < Math.min(width, x + halfSize + 1); kx++) {
+  for (
+    let ky = Math.max(0, y - halfSize);
+    ky < Math.min(height, y + halfSize + 1);
+    ky++
+  ) {
+    for (
+      let kx = Math.max(0, x - halfSize);
+      kx < Math.min(width, x + halfSize + 1);
+      kx++
+    ) {
       // Calculate squared distance from center
-      const dx = kx - x;
-      const dy = ky - y;
-      const distanceSquared = dx * dx + dy * dy;
+      const dx = kx - x
+      const dy = ky - y
+      const distanceSquared = dx * dx + dy * dy
 
       // Skip if outside the ellipse
       // Use <= to include the boundary (more like OpenCV's implementation)
-      if (distanceSquared > radiusSquared) continue;
+      if (distanceSquared > radiusSquared) continue
 
-      const checkPixelIndex = ky * width + kx;
+      const checkPixelIndex = ky * width + kx
       if (blackPixelsMask[checkPixelIndex]) {
         // Found a black pixel within the structuring element's bounds
-        return true;
+        return true
       }
     }
   }
 
-  return false;
+  return false
 }
 
 /**
  * Performs erosion on a boolean mask.
  * A pixel is set to true only if all pixels in its neighborhood (kernel) are true.
  */
-function erodeMask(mask: boolean[], width: number, height: number, kernelSize: number): boolean[] {
-  const erodedMask = new Array(mask.length).fill(false);
-  const halfKernel = Math.floor(kernelSize / 2);
+function erodeMask(
+  mask: boolean[],
+  width: number,
+  height: number,
+  kernelSize: number,
+): boolean[] {
+  const erodedMask = new Array(mask.length).fill(false)
+  const halfKernel = Math.floor(kernelSize / 2)
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      let allTrue = true;
-      for (let ky = Math.max(0, y - halfKernel); ky < Math.min(height, y + halfKernel + 1); ky++) {
-        for (let kx = Math.max(0, x - halfKernel); kx < Math.min(width, x + halfKernel + 1); kx++) {
+      let allTrue = true
+      for (
+        let ky = Math.max(0, y - halfKernel);
+        ky < Math.min(height, y + halfKernel + 1);
+        ky++
+      ) {
+        for (
+          let kx = Math.max(0, x - halfKernel);
+          kx < Math.min(width, x + halfKernel + 1);
+          kx++
+        ) {
           if (!mask[ky * width + kx]) {
-            allTrue = false;
-            break;
+            allTrue = false
+            break
           }
         }
-        if (!allTrue) break;
+        if (!allTrue) break
       }
       if (allTrue) {
-        erodedMask[y * width + x] = true;
+        erodedMask[y * width + x] = true
       }
     }
   }
-  return erodedMask;
+  return erodedMask
 }
 
 /**
  * Performs dilation on a boolean mask.
  * A pixel is set to true if any pixel in its neighborhood (kernel) is true.
  */
-function dilateMask(mask: boolean[], width: number, height: number, kernelSize: number): boolean[] {
-  const dilatedMask = new Array(mask.length).fill(false);
-  const halfKernel = Math.floor(kernelSize / 2);
+function dilateMask(
+  mask: boolean[],
+  width: number,
+  height: number,
+  kernelSize: number,
+): boolean[] {
+  const dilatedMask = new Array(mask.length).fill(false)
+  const halfKernel = Math.floor(kernelSize / 2)
 
   for (let y = 0; y < height; y++) {
     for (let x = 0; x < width; x++) {
-      let anyTrue = false;
-      for (let ky = Math.max(0, y - halfKernel); ky < Math.min(height, y + halfKernel + 1); ky++) {
-        for (let kx = Math.max(0, x - halfKernel); kx < Math.min(width, x + halfKernel + 1); kx++) {
+      let anyTrue = false
+      for (
+        let ky = Math.max(0, y - halfKernel);
+        ky < Math.min(height, y + halfKernel + 1);
+        ky++
+      ) {
+        for (
+          let kx = Math.max(0, x - halfKernel);
+          kx < Math.min(width, x + halfKernel + 1);
+          kx++
+        ) {
           if (mask[ky * width + kx]) {
-            anyTrue = true;
-            break;
+            anyTrue = true
+            break
           }
         }
-        if (anyTrue) break;
+        if (anyTrue) break
       }
       if (anyTrue) {
-        dilatedMask[y * width + x] = true;
+        dilatedMask[y * width + x] = true
       }
     }
   }
-  return dilatedMask;
+  return dilatedMask
 }
 
 /**
  * Performs morphological opening (erosion followed by dilation) on a boolean mask.
  */
-function morphologicalOpenMask(mask: boolean[], width: number, height: number, kernelSize: number): boolean[] {
-  const eroded = erodeMask(mask, width, height, kernelSize);
-  return dilateMask(eroded, width, height, kernelSize);
+function morphologicalOpenMask(
+  mask: boolean[],
+  width: number,
+  height: number,
+  kernelSize: number,
+): boolean[] {
+  const eroded = erodeMask(mask, width, height, kernelSize)
+  return dilateMask(eroded, width, height, kernelSize)
 }
 
 /**
@@ -485,39 +554,39 @@ export function createCircularWhitelistMask(
   radius: number,
   width: number,
   height: number,
-  existingMask?: boolean[]
+  existingMask?: boolean[],
 ): boolean[] {
-  const mask = existingMask || new Array(width * height).fill(false);
-  
+  const mask = existingMask || new Array(width * height).fill(false)
+
   // Ensure radius is at least 1 pixel
-  const effectiveRadius = Math.max(1, radius);
-  const radiusSquared = effectiveRadius * effectiveRadius;
-  
+  const effectiveRadius = Math.max(1, radius)
+  const radiusSquared = effectiveRadius * effectiveRadius
+
   // Calculate bounds of the affected area - ensure we're within image boundaries
-  const startX = Math.max(0, Math.floor(x - effectiveRadius));
-  const endX = Math.min(width - 1, Math.ceil(x + effectiveRadius));
-  const startY = Math.max(0, Math.floor(y - effectiveRadius));
-  const endY = Math.min(height - 1, Math.ceil(y + effectiveRadius));
-  
+  const startX = Math.max(0, Math.floor(x - effectiveRadius))
+  const endX = Math.min(width - 1, Math.ceil(x + effectiveRadius))
+  const startY = Math.max(0, Math.floor(y - effectiveRadius))
+  const endY = Math.min(height - 1, Math.ceil(y + effectiveRadius))
+
   // Set mask values for pixels inside the circle
   for (let py = startY; py <= endY; py++) {
     for (let px = startX; px <= endX; px++) {
       // Calculate squared distance from center
-      const dx = px - x;
-      const dy = py - y;
-      const distanceSquared = dx * dx + dy * dy;
-      
+      const dx = px - x
+      const dy = py - y
+      const distanceSquared = dx * dx + dy * dy
+
       // If pixel is inside the circle (or on the boundary), mark it as whitelisted
       if (distanceSquared <= radiusSquared) {
-        const pixelIndex = py * width + px;
+        const pixelIndex = py * width + px
         if (pixelIndex >= 0 && pixelIndex < mask.length) {
-          mask[pixelIndex] = true;
+          mask[pixelIndex] = true
         }
       }
     }
   }
-  
-  return mask;
+
+  return mask
 }
 
 /**
@@ -530,13 +599,13 @@ export function createCircularWhitelistMask(
 export function createStrokesWhitelistMask(
   strokes: Array<[number, number, number]>,
   width: number,
-  height: number
+  height: number,
 ): boolean[] {
-  let mask = new Array(width * height).fill(false);
-  
+  let mask = new Array(width * height).fill(false)
+
   for (const [x, y, radius] of strokes) {
-    mask = createCircularWhitelistMask(x, y, radius, width, height, mask);
+    mask = createCircularWhitelistMask(x, y, radius, width, height, mask)
   }
-  
-  return mask;
+
+  return mask
 }
